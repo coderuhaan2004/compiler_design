@@ -1,5 +1,8 @@
-def fib(x)
-if x < 3 then		
-1
-else
-fib(x-1) + fib(x-2)
+def greet(name) 
+#checking the name to be greated.
+if name == "Alice" || name == "Bob" then 
+print("Hello,  + name + "!") 
+else 
+print("Unknown user: " + name) 
+if !(name == "Admin") then 
+print("Access denied.") 
