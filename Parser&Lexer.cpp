@@ -1,216 +1,248 @@
-#include <bits/stdc++.h>
-#include <fstream>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-using namespace std;
+//===----------------------------------------------------------------------===//
+// Lexer
+//===----------------------------------------------------------------------===//
 
-ifstream inputFile("input.txt");
-// Define token codes for each identifier
-enum Token {
-    IDENTIFIER = -1,
-    NUMBERS = -2,
-    OPERATORS = -3,
-    COMMENTS = -4,
-    DEF = -5,
-    LITERAL = -6,
-    EXTERN = -7,
-    EOFTOKEN = -8,
-    EXPRESSION = -9
+// The lexer returns tokens [0-255] if it is an unknown character, otherwise one
+// of these for known things.
+enum Token
+{
+  tok_eof = -1,
+
+  // commands
+  tok_def = -2,
+  tok_extern = -3,
+
+  // primary
+  tok_identifier = -4,
+  tok_number = -5,
+
+  // comparison operators
+  tok_le = -6, // <=
+  tok_ge = -7, // >=
 };
 
-static double NumVal;     // Global variable for numeric literals
-static string IdenStr;    // Global variable for identifiers
-static string CommentStr; // Global variable for comments
-static string OpStr;      // Global variable for operators
-static string StrLiteral; // Global variable for string literals
-static string ExpressionStr;
-
-static int LastChar = ' '; // Maintain state across function calls
-static int getNextChar() {
-    return inputFile.get(); // Read from file instead of stdin
-}
+static std::string IdentifierStr; // Filled in if tok_identifier
+static double NumVal;             // Filled in if tok_number
 
 /// gettok - Return the next token from standard input.
-static int gettok() {
-    // Skip whitespace
-    while (isspace(LastChar))
-        LastChar = getNextChar();
+static int gettok()
+{
+  static int LastChar = ' ';
 
-    // Processing identifiers
-    if (isalpha(LastChar)) {
-        IdenStr = LastChar;
-        while (isalnum((LastChar = getNextChar())))
-            IdenStr += LastChar;
+  // Skip any whitespace.
+  while (isspace(LastChar))
+    LastChar = getchar();
 
-        if (IdenStr == "def")
-            return DEF;
-        if (IdenStr == "extern")
-            return EXTERN;
-        return IDENTIFIER;
+  if (isalpha(LastChar))
+  { // identifier: [a-zA-Z][a-zA-Z0-9]*
+    IdentifierStr = LastChar;
+    while (isalnum((LastChar = getchar())))
+      IdentifierStr += LastChar;
+
+    if (IdentifierStr == "def")
+      return tok_def;
+    if (IdentifierStr == "extern")
+      return tok_extern;
+    return tok_identifier;
+  }
+
+  if (isdigit(LastChar) || LastChar == '.')
+  { // Number: [0-9.]+
+    std::string NumStr;
+    do
+    {
+      NumStr += LastChar;
+      LastChar = getchar();
+    } while (isdigit(LastChar) || LastChar == '.');
+
+    NumVal = strtod(NumStr.c_str(), nullptr);
+    return tok_number;
+  }
+
+  if (LastChar == '#')
+  {
+    // Comment until end of line.
+    do
+      LastChar = getchar();
+    while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+
+    if (LastChar != EOF)
+      return gettok();
+  }
+
+  // Check for end of file.  Don't eat the EOF.
+  if (LastChar == EOF)
+    return tok_eof;
+
+  if (LastChar == '<')
+  {
+    LastChar = getchar();
+    if (LastChar == '=')
+    {
+      LastChar = getchar();
+      return tok_le;
     }
-
-    // Processing string literals
-    if (LastChar == '"') {
-        StrLiteral = "";
-        while ((LastChar = getNextChar()) != '"' && LastChar != EOF) {
-            if (LastChar == '\n' || LastChar == '\r') {
-                cerr << "Error: Invalid string literal -> \"" << StrLiteral << "\"" << endl;
-                return -1;
-            }
-            StrLiteral += LastChar;
-        }
-        LastChar = getNextChar(); // Consume closing quote
-        return LITERAL;
+    return '<';
+  }
+  if (LastChar == '>')
+  {
+    LastChar = getchar();
+    if (LastChar == '=')
+    {
+      LastChar = getchar();
+      return tok_ge;
     }
-
-    // Processing expressions inside parentheses
-    if (LastChar == '(') {
-        ExpressionStr = "";
-        int OpenParens = 1;
-        while (OpenParens > 0 && (LastChar = getNextChar()) != EOF) {
-            if (LastChar == '(')
-                OpenParens++;
-            else if (LastChar == ')') {
-                OpenParens--;
-                if (OpenParens == 0)
-                    break;
-            }
-            if (OpenParens > 0)
-                ExpressionStr += LastChar;
-        }
-        LastChar = getNextChar(); // Consume ')'
-        return EXPRESSION;
-    }
-
-    // Processing operators
-    if (strchr("+-*/<>=!&|;", LastChar)) {
-        OpStr = LastChar;
-        while (strchr("+-*/<>=!&|", (LastChar = getNextChar())))
-            OpStr += LastChar;
-        return OPERATORS;
-    }
-
-    // Processing numbers
-    if (isdigit(LastChar) || LastChar == '.') {
-        string NumStr;
-        bool HasDecimal = false;
-        do {
-            NumStr += LastChar;
-            if (LastChar == '.') {
-                if (HasDecimal) {
-                    cerr << "Error: Invalid number -> " << NumStr << endl;
-                    while (isdigit(LastChar = getNextChar()) || LastChar == '.');
-                    return -1;
-                }
-                HasDecimal = true;
-            }
-            LastChar = getNextChar();
-        } while (isdigit(LastChar) || LastChar == '.');
-
-        if (NumStr.back() == '.') {
-            cerr << "Error: Invalid number -> " << NumStr << endl;
-            return -1;
-        }
-        NumVal = strtod(NumStr.c_str(), nullptr);
-        return NUMBERS;
-    }
-
-    // Processing comments
-    if (LastChar == '#') {
-        CommentStr = "";
-        do {
-            CommentStr += LastChar;
-            LastChar = getNextChar();
-        } while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
-
-        if (LastChar != EOF)
-            LastChar = getNextChar();
-        return COMMENTS;
-    }
-
-    // Handle end of file
-    if (LastChar == EOF)
-        return EOFTOKEN;
-
-    // Return character as its ASCII value
-    int ThisChar = LastChar;
-    LastChar = getNextChar();
-    return ThisChar;
+    return '>';
+  }
+  // Otherwise, just return the character as its ascii value.
+  int ThisChar = LastChar;
+  LastChar = getchar();
+  if (ThisChar == '\n' || ThisChar == '\r')
+  {
+    fprintf(stderr, "ready> ");
+    return gettok();
+  }
+  return ThisChar;
 }
 
 //===----------------------------------------------------------------------===//
 // Abstract Syntax Tree (aka Parse Tree)
 //===----------------------------------------------------------------------===//
 
-namespace {
+namespace
+{
 
-/// ExprAST - Base class for all expression nodes.
-class ExprAST {
-public:
-  virtual ~ExprAST() = default;
-};
+  /// ExprAST - Base class for all expression nodes.
+  class ExprAST
+  {
+  public:
+    virtual ~ExprAST() = default;
+    virtual void printBinExpr(int depth = 0) const
+    {
+    }
+  };
 
-/// NumberExprAST - Expression class for numeric literals like "1.0".
-class NumberExprAST : public ExprAST {
-  double Val;
+  /// NumberExprAST - Expression class for numeric literals like "1.0".
+  class NumberExprAST : public ExprAST
+  {
+    double Val;
 
-public:
-  NumberExprAST(double Val) : Val(Val) {}
-};
+  public:
+    NumberExprAST(double Val) : Val(Val) {}
+    void printBinExpr(int depth = 0) const override
+    {
+      // Print the tree with Val as the root
+      for (int i = 0; i < depth; ++i)
+      {
+        printf("  ");
+      }
+      printf("%f\n", Val);
+    }
+  };
 
-/// VariableExprAST - Expression class for referencing a variable, like "a".
-class VariableExprAST : public ExprAST {
-  std::string Name;
+  /// VariableExprAST - Expression class for referencing a variable, like "a".
+  class VariableExprAST : public ExprAST
+  {
+    std::string Name;
 
-public:
-  VariableExprAST(const std::string &Name) : Name(Name) {}
-};
+  public:
+    VariableExprAST(const std::string &Name) : Name(Name) {}
+    void printBinExpr(int depth = 0) const override
+    {
+      // Print the tree with Name as the root
+      for (int i = 0; i < depth; ++i)
+      {
+        printf("  ");
+      }
+      printf("%s\n", Name.c_str());
+    }
+  };
 
-/// BinaryExprAST - Expression class for a binary operator.
-class BinaryExprAST : public ExprAST {
-  char Op;
-  std::unique_ptr<ExprAST> LHS, RHS;
+  /// BinaryExprAST - Expression class for a binary operator.
+  class BinaryExprAST : public ExprAST
+  {
+    int Op;
+    std::unique_ptr<ExprAST> LHS, RHS;
 
-public:
-  BinaryExprAST(char Op, std::unique_ptr<ExprAST> LHS,
-                std::unique_ptr<ExprAST> RHS)
-      : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
-};
+  public:
+    BinaryExprAST(int Op, std::unique_ptr<ExprAST> LHS,
+                  std::unique_ptr<ExprAST> RHS)
+        : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+    void printBinExpr(int depth = 0) const override
+    {
+      // Print the tree with Operator as the root and LHS and RHS as children
+      for (int i = 0; i < depth; ++i)
+      {
+        printf("  ");
+      }
+      if (Op == tok_le)
+      {
+        printf("<=\n");
+      }
+      else if (Op == tok_ge)
+      {
+        printf(">=\n");
+      }
+      else printf("%c\n", Op);
+      if (LHS != nullptr)
+      {
+        LHS->printBinExpr(depth + 1);
+      }
+      if (RHS != nullptr)
+      {
+        RHS->printBinExpr(depth + 1);
+      }
+    }
+  };
 
-/// CallExprAST - Expression class for function calls.
-class CallExprAST : public ExprAST {
-  std::string Callee;
-  std::vector<std::unique_ptr<ExprAST>> Args;
+  /// CallExprAST - Expression class for function calls.
+  class CallExprAST : public ExprAST
+  {
+    std::string Callee;
+    std::vector<std::unique_ptr<ExprAST>> Args;
 
-public:
-  CallExprAST(const std::string &Callee,
-              std::vector<std::unique_ptr<ExprAST>> Args)
-      : Callee(Callee), Args(std::move(Args)) {}
-};
+  public:
+    CallExprAST(const std::string &Callee,
+                std::vector<std::unique_ptr<ExprAST>> Args)
+        : Callee(Callee), Args(std::move(Args)) {}
+  };
 
-/// PrototypeAST - This class represents the "prototype" for a function,
-/// which captures its name, and its argument names (thus implicitly the number
-/// of arguments the function takes).
-class PrototypeAST {
-  std::string Name;
-  std::vector<std::string> Args;
+  /// PrototypeAST - This class represents the "prototype" for a function,
+  /// which captures its name, and its argument names (thus implicitly the number
+  /// of arguments the function takes).
+  class PrototypeAST
+  {
+    std::string Name;
+    std::vector<std::string> Args;
 
-public:
-  PrototypeAST(const std::string &Name, std::vector<std::string> Args)
-      : Name(Name), Args(std::move(Args)) {}
+  public:
+    PrototypeAST(const std::string &Name, std::vector<std::string> Args)
+        : Name(Name), Args(std::move(Args)) {}
 
-  const std::string &getName() const { return Name; }
-};
+    const std::string &getName() const { return Name; }
+  };
 
-/// FunctionAST - This class represents a function definition itself.
-class FunctionAST {
-  std::unique_ptr<PrototypeAST> Proto;
-  std::unique_ptr<ExprAST> Body;
+  /// FunctionAST - This class represents a function definition itself.
+  class FunctionAST
+  {
+    std::unique_ptr<PrototypeAST> Proto;
+    std::unique_ptr<ExprAST> Body;
 
-public:
-  FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-              std::unique_ptr<ExprAST> Body)
-      : Proto(std::move(Proto)), Body(std::move(Body)) {}
-};
+  public:
+    FunctionAST(std::unique_ptr<PrototypeAST> Proto,
+                std::unique_ptr<ExprAST> Body)
+        : Proto(std::move(Proto)), Body(std::move(Body)) {}
+    const ExprAST *getBody() const { return Body.get(); }
+  };
 
 } // end anonymous namespace
 
@@ -229,8 +261,9 @@ static int getNextToken() { return CurTok = gettok(); }
 static std::map<char, int> BinopPrecedence;
 
 /// GetTokPrecedence - Get the precedence of the pending binary operator token.
-static int GetTokPrecedence() {
-  if (!isascii(CurTok))
+static int GetTokPrecedence()
+{
+  if (!isascii(CurTok) && CurTok != tok_le && CurTok != tok_ge)
     return -1;
 
   // Make sure it's a declared binop.
@@ -241,11 +274,13 @@ static int GetTokPrecedence() {
 }
 
 /// LogError* - These are little helper functions for error handling.
-std::unique_ptr<ExprAST> LogError(const char *Str) {
+std::unique_ptr<ExprAST> LogError(const char *Str)
+{
   fprintf(stderr, "Error: %s\n", Str);
   return nullptr;
 }
-std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
+std::unique_ptr<PrototypeAST> LogErrorP(const char *Str)
+{
   LogError(Str);
   return nullptr;
 }
@@ -253,14 +288,16 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
 static std::unique_ptr<ExprAST> ParseExpression();
 
 /// numberexpr ::= number
-static std::unique_ptr<ExprAST> ParseNumberExpr() {
+static std::unique_ptr<ExprAST> ParseNumberExpr()
+{
   auto Result = std::make_unique<NumberExprAST>(NumVal);
   getNextToken(); // consume the number
   return std::move(Result);
 }
 
 /// parenexpr ::= '(' expression ')'
-static std::unique_ptr<ExprAST> ParseParenExpr() {
+static std::unique_ptr<ExprAST> ParseParenExpr()
+{
   getNextToken(); // eat (.
   auto V = ParseExpression();
   if (!V)
@@ -275,8 +312,9 @@ static std::unique_ptr<ExprAST> ParseParenExpr() {
 /// identifierexpr
 ///   ::= identifier
 ///   ::= identifier '(' expression* ')'
-static std::unique_ptr<ExprAST> ParseIdentifierExpr() {
-  std::string IdName = IdenStr;
+static std::unique_ptr<ExprAST> ParseIdentifierExpr()
+{
+  std::string IdName = IdentifierStr;
 
   getNextToken(); // eat identifier.
 
@@ -286,8 +324,10 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr() {
   // Call.
   getNextToken(); // eat (
   std::vector<std::unique_ptr<ExprAST>> Args;
-  if (CurTok != ')') {
-    while (true) {
+  if (CurTok != ')')
+  {
+    while (true)
+    {
       if (auto Arg = ParseExpression())
         Args.push_back(std::move(Arg));
       else
@@ -312,13 +352,15 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr() {
 ///   ::= identifierexpr
 ///   ::= numberexpr
 ///   ::= parenexpr
-static std::unique_ptr<ExprAST> ParsePrimary() {
-  switch (CurTok) {
+static std::unique_ptr<ExprAST> ParsePrimary()
+{
+  switch (CurTok)
+  {
   default:
     return LogError("unknown token when expecting an expression");
-  case IDENTIFIER:
+  case tok_identifier:
     return ParseIdentifierExpr();
-  case NUMBERS:
+  case tok_number:
     return ParseNumberExpr();
   case '(':
     return ParseParenExpr();
@@ -328,9 +370,11 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
 /// binoprhs
 ///   ::= ('+' primary)*
 static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
-                                              std::unique_ptr<ExprAST> LHS) {
+                                              std::unique_ptr<ExprAST> LHS)
+{
   // If this is a binop, find its precedence.
-  while (true) {
+  while (true)
+  {
     int TokPrec = GetTokPrecedence();
 
     // If this is a binop that binds at least as tightly as the current binop,
@@ -350,7 +394,8 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
     // If BinOp binds less tightly with RHS than the operator after RHS, let
     // the pending operator take RHS as its LHS.
     int NextPrec = GetTokPrecedence();
-    if (TokPrec < NextPrec) {
+    if (TokPrec < NextPrec)
+    {
       RHS = ParseBinOpRHS(TokPrec + 1, std::move(RHS));
       if (!RHS)
         return nullptr;
@@ -365,7 +410,8 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
 /// expression
 ///   ::= primary binoprhs
 ///
-static std::unique_ptr<ExprAST> ParseExpression() {
+static std::unique_ptr<ExprAST> ParseExpression()
+{
   auto LHS = ParsePrimary();
   if (!LHS)
     return nullptr;
@@ -375,19 +421,20 @@ static std::unique_ptr<ExprAST> ParseExpression() {
 
 /// prototype
 ///   ::= id '(' id* ')'
-static std::unique_ptr<PrototypeAST> ParsePrototype() {
-  if (CurTok != IDENTIFIER)
+static std::unique_ptr<PrototypeAST> ParsePrototype()
+{
+  if (CurTok != tok_identifier)
     return LogErrorP("Expected function name in prototype");
 
-  std::string FnName = IdenStr;
+  std::string FnName = IdentifierStr;
   getNextToken();
 
   if (CurTok != '(')
     return LogErrorP("Expected '(' in prototype");
 
   std::vector<std::string> ArgNames;
-  while (getNextToken() == IDENTIFIER)
-    ArgNames.push_back(IdenStr);
+  while (getNextToken() == tok_identifier)
+    ArgNames.push_back(IdentifierStr);
   if (CurTok != ')')
     return LogErrorP("Expected ')' in prototype");
 
@@ -398,7 +445,8 @@ static std::unique_ptr<PrototypeAST> ParsePrototype() {
 }
 
 /// definition ::= 'def' prototype expression
-static std::unique_ptr<FunctionAST> ParseDefinition() {
+static std::unique_ptr<FunctionAST> ParseDefinition()
+{
   getNextToken(); // eat def.
   auto Proto = ParsePrototype();
   if (!Proto)
@@ -410,8 +458,10 @@ static std::unique_ptr<FunctionAST> ParseDefinition() {
 }
 
 /// toplevelexpr ::= expression
-static std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
-  if (auto E = ParseExpression()) {
+static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
+{
+  if (auto E = ParseExpression())
+  {
     // Make an anonymous proto.
     auto Proto = std::make_unique<PrototypeAST>("__anon_expr",
                                                 std::vector<std::string>());
@@ -421,7 +471,8 @@ static std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
 }
 
 /// external ::= 'extern' prototype
-static std::unique_ptr<PrototypeAST> ParseExtern() {
+static std::unique_ptr<PrototypeAST> ParseExtern()
+{
   getNextToken(); // eat extern.
   return ParsePrototype();
 }
@@ -430,48 +481,65 @@ static std::unique_ptr<PrototypeAST> ParseExtern() {
 // Top-Level parsing
 //===----------------------------------------------------------------------===//
 
-static void HandleDefinition() {
-  if (ParseDefinition()) {
+static void HandleDefinition()
+{
+  if (ParseDefinition())
+  {
     fprintf(stderr, "Parsed a function definition.\n");
-  } else {
+  }
+  else
+  {
     // Skip token for error recovery.
     getNextToken();
   }
 }
 
-static void HandleExtern() {
-  if (ParseExtern()) {
+static void HandleExtern()
+{
+  if (ParseExtern())
+  {
     fprintf(stderr, "Parsed an extern\n");
-  } else {
+  }
+  else
+  {
     // Skip token for error recovery.
     getNextToken();
   }
 }
 
-static void HandleTopLevelExpression() {
+static void HandleTopLevelExpression()
+{
   // Evaluate a top-level expression into an anonymous function.
-  if (ParseTopLevelExpr()) {
+  if (auto E = ParseTopLevelExpr())
+  {
     fprintf(stderr, "Parsed a top-level expr\n");
-  } else {
+    // print the binary expression
+    E->getBody()->printBinExpr();
+  }
+  else
+  {
     // Skip token for error recovery.
     getNextToken();
   }
 }
 
 /// top ::= definition | external | expression | ';'
-static void MainLoop() {
-  while (true) {
+static void MainLoop()
+{
+  while (true)
+  {
     fprintf(stderr, "ready> ");
-    switch (CurTok) {
-    case EOFTOKEN:
+    switch (CurTok)
+    {
+    case tok_eof:
       return;
     case ';': // ignore top-level semicolons.
       getNextToken();
       break;
-    case DEF:
+    case tok_def:
       HandleDefinition();
       break;
-    case EXTERN:
+    case tok_extern:
       HandleExtern();
       break;
     default:
@@ -485,25 +553,26 @@ static void MainLoop() {
 // Main driver code.
 //===----------------------------------------------------------------------===//
 
-int main() {
-    if (!inputFile) {
-        std::cerr << "Error: Could not open input.txt" << std::endl;
-        return 1;
-    }
+int main()
+{
+  // Install standard binary operators.
+  // 1 is lowest precedence.
+  BinopPrecedence['<'] = 10;
+  BinopPrecedence['>'] = 10;
+  BinopPrecedence[tok_le] = 10; // <=
+  BinopPrecedence[tok_ge] = 10; // >=
+  BinopPrecedence['+'] = 20;
+  BinopPrecedence['-'] = 20;
+  BinopPrecedence['*'] = 40;
+  BinopPrecedence['/'] = 40; // highest.
+  BinopPrecedence['%'] = 40;
 
-    // Install standard binary operators.
-    // 1 is lowest precedence.
-    BinopPrecedence['<'] = 10;
-    BinopPrecedence['+'] = 20;
-    BinopPrecedence['-'] = 20;
-    BinopPrecedence['*'] = 40; // highest.
+  // Prime the first token.
+  fprintf(stderr, "ready> ");
+  getNextToken();
 
-    // Prime the first token.
-    getNextToken();  
+  // Run the main "interpreter loop" now.
+  MainLoop();
 
-    // Run the main "interpreter loop" now.
-    MainLoop();
-
-    inputFile.close(); // Close the file after use
-    return 0;
+  return 0;
 }
