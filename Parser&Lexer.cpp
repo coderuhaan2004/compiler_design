@@ -6,7 +6,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
+using namespace std;
 //===----------------------------------------------------------------------===//
 // Lexer
 //===----------------------------------------------------------------------===//
@@ -292,6 +294,7 @@ static std::unique_ptr<ExprAST> ParseNumberExpr()
 {
   auto Result = std::make_unique<NumberExprAST>(NumVal);
   getNextToken(); // consume the number
+  cout<<"Number Parsed! "<<endl;
   return std::move(Result);
 }
 
@@ -306,6 +309,7 @@ static std::unique_ptr<ExprAST> ParseParenExpr()
   if (CurTok != ')')
     return LogError("expected ')'");
   getNextToken(); // eat ).
+  cout<<"Parenthesis expression Parsed! "<<endl;
   return V;
 }
 
@@ -335,9 +339,6 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr()
 
       if (CurTok == ')')
         break;
-
-      if (CurTok != ',')
-        return LogError("Expected ')' or ',' in argument list");
       getNextToken();
     }
   }
@@ -387,7 +388,7 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
     getNextToken(); // eat binop
 
     // Parse the primary expression after the binary operator.
-    auto RHS = ParsePrimary();
+    auto RHS = ParsePrimary(); //RHS parsed and updated
     if (!RHS)
       return nullptr;
 
